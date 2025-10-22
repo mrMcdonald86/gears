@@ -417,14 +417,14 @@ var $builtinmodule = function(name) {
   mod.Sound = Sk.misceval.buildClass(mod, function($gbl, $loc) {
     var self = this;
 
-    this.playing = false;
-
     $loc.__init__ = new Sk.builtin.func(function(self, address) {
       self.volume = 1.0;
       self.audioCtx = new (window.AudioContext || window.webkitAudioContext || window.audioContext);
       self.gainNode = self.audioCtx.createGain();
 
       self.gainNode.connect(self.audioCtx.destination);
+      self.playing = false;
+      self._notesTimer = null;
     });
 
     $loc.speak = new Sk.builtin.func(function(self, text) {
@@ -447,22 +447,184 @@ var $builtinmodule = function(name) {
     });
 
     $loc.play_tone = new Sk.builtin.func(function(self, frequency, duration, delay) {
+      if (self._notesTimer) {
+        clearTimeout(self._notesTimer);
+        self._notesTimer = null;
+      }
       self.playing = true;
-      oscillator = self.audioCtx.createOscillator();
+      const oscillator = self.audioCtx.createOscillator();
 
       oscillator.type = 'sine';
       oscillator.connect(self.gainNode);
       oscillator.onended = function() {
-        if (delay.v > 0) {
-          setTimeout(function(){ self.playing = false; }, delay.v * 1000);
+        if (delay && delay.v > 0) {
+          setTimeout(function() { self.playing = false; }, delay.v * 1000);
         } else {
           self.playing = false;
         }
       };
       oscillator.frequency.value = frequency.v;
 
-      oscillator.start(self.audioCtx.currentTime);
-      oscillator.stop(self.audioCtx.currentTime + duration.v);
+      const startTime = self.audioCtx.currentTime;
+      oscillator.start(startTime);
+      oscillator.stop(startTime + duration.v);
+    });
+
+    $loc.play_notes = new Sk.builtin.func(function(self, notes, tempo, delay) {
+      const tempoValue = tempo ? tempo.v : 120;
+      const delayValue = delay ? delay.v : 0;
+      let jsNotes = Sk.ffi.remapToJs(notes);
+
+      if (!Array.isArray(jsNotes)) {
+        jsNotes = jsNotes != null ? [jsNotes] : [];
+      }
+
+      const sanitizedNotes = [];
+      for (const rawNote of jsNotes) {
+        if (rawNote === null || rawNote === undefined) {
+          continue;
+        }
+        const noteStr = String(rawNote).trim();
+        if (noteStr.length === 0) {
+          continue;
+        }
+        sanitizedNotes.push(noteStr);
+      }
+
+      if (sanitizedNotes.length === 0) {
+        self.playing = false;
+        if (self._notesTimer) {
+          clearTimeout(self._notesTimer);
+          self._notesTimer = null;
+        }
+        return Sk.builtin.none.none$;
+      }
+
+      const beatDuration = tempoValue > 0 ? 60 / tempoValue : 0;
+      const NOTE_OFFSETS = {
+        'C': -9,
+        'C#': -8,
+        'DB': -8,
+        'D': -7,
+        'D#': -6,
+        'EB': -6,
+        'E': -5,
+        'F': -4,
+        'F#': -3,
+        'GB': -3,
+        'G': -2,
+        'G#': -1,
+        'AB': -1,
+        'A': 0,
+        'A#': 1,
+        'BB': 1,
+        'B': 2
+      };
+
+      const parseNote = function(noteText) {
+        const parts = noteText.split('/');
+        if (parts.length < 2) {
+          return null;
+        }
+
+        const pitchPart = parts[0].trim();
+        let durationPart = parts[1].trim();
+
+        let dotMultiplier = 1;
+        if (durationPart.includes('.')) {
+          const dotCount = durationPart.split('').filter((ch) => ch === '.').length;
+          durationPart = durationPart.replace(/\./g, '');
+          for (let i = 0; i < dotCount; i++) {
+            dotMultiplier += Math.pow(0.5, i + 1);
+          }
+        }
+
+        const denominator = parseInt(durationPart, 10);
+        if (!denominator || beatDuration === 0) {
+          return null;
+        }
+
+        const durationSeconds = beatDuration * (4 / denominator) * dotMultiplier;
+
+        if (pitchPart.toUpperCase() === 'R') {
+          return { frequency: null, duration: durationSeconds };
+        }
+
+        const match = pitchPart.match(/^([A-Ga-g])([#b]?)(-?\d+)$/);
+        if (!match) {
+          return null;
+        }
+
+        const letter = match[1].toUpperCase();
+        const accidental = match[2] ? match[2].toUpperCase() : '';
+        const octave = parseInt(match[3], 10);
+        const key = letter + accidental;
+        const offset = NOTE_OFFSETS[key];
+
+        if (offset === undefined) {
+          return null;
+        }
+
+        const semitoneOffset = offset + 12 * (octave - 4);
+        const frequency = 440 * Math.pow(2, semitoneOffset / 12);
+
+        return { frequency: frequency, duration: durationSeconds };
+      };
+
+      const scheduledNotes = [];
+      for (const noteText of sanitizedNotes) {
+        const parsed = parseNote(noteText);
+        if (parsed) {
+          scheduledNotes.push(parsed);
+        }
+      }
+
+      if (scheduledNotes.length === 0) {
+        self.playing = false;
+        if (self._notesTimer) {
+          clearTimeout(self._notesTimer);
+          self._notesTimer = null;
+        }
+        return Sk.builtin.none.none$;
+      }
+
+      if (self._notesTimer) {
+        clearTimeout(self._notesTimer);
+        self._notesTimer = null;
+      }
+
+      self.playing = true;
+      let currentTime = self.audioCtx.currentTime;
+      let totalDuration = 0;
+
+      for (const [index, note] of scheduledNotes.entries()) {
+        if (note.frequency !== null) {
+          const oscillator = self.audioCtx.createOscillator();
+          oscillator.type = 'sine';
+          oscillator.connect(self.gainNode);
+          oscillator.frequency.value = note.frequency;
+          oscillator.start(currentTime);
+          oscillator.stop(currentTime + note.duration);
+        }
+        currentTime += note.duration;
+        totalDuration += note.duration;
+
+        if (delayValue > 0 && index < scheduledNotes.length - 1) {
+          currentTime += delayValue;
+          totalDuration += delayValue;
+        }
+      }
+
+      if (totalDuration > 0) {
+        self._notesTimer = setTimeout(function() {
+          self.playing = false;
+          self._notesTimer = null;
+        }, totalDuration * 1000);
+      } else {
+        self.playing = false;
+      }
+
+      return Sk.builtin.none.none$;
     });
 
     $loc.isPlaying = new Sk.builtin.func(function(self) {
