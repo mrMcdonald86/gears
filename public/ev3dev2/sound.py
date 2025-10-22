@@ -45,6 +45,20 @@ class Sound:
         while self.sound.isPlaying():
           time.sleep(SENSOR_DELAY)
 
+  def play_notes(self, notes, tempo=120, delay=0.0, volume=100, play_type=0):
+    self.sound.set_volume(volume)
+    if play_type == self.PLAY_NO_WAIT_FOR_COMPLETE:
+      self.sound.play_notes(notes, tempo, delay)
+    elif play_type == self.PLAY_WAIT_FOR_COMPLETE:
+      self.sound.play_notes(notes, tempo, delay)
+      while self.sound.isPlaying():
+        time.sleep(SENSOR_DELAY)
+    elif play_type == self.PLAY_LOOP:
+      while True:
+        self.sound.play_notes(notes, tempo, delay)
+        while self.sound.isPlaying():
+          time.sleep(SENSOR_DELAY)
+
   def beep(self, args='', play_type=0):
     if play_type == self.PLAY_NO_WAIT_FOR_COMPLETE:
       self.sound.play_tone(440, 0.2, 0)

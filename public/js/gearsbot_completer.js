@@ -183,6 +183,7 @@ const GearsBotCompleter = (function() {
                     methods: [
                         { name: 'beep', args: [] },
                         { name: 'play_tone', args: [{ name: 'frequency' }, { name: 'duration' }] },
+                        { name: 'play_notes', args: [{ name: 'notes' }, { name: 'tempo', default: 120 }] },
                         { name: 'speak', args: [{ name: 'text' }] }
                     ],
                     properties: []
@@ -211,6 +212,7 @@ const GearsBotCompleter = (function() {
                 'EV3Brick.Speaker': {
                     methods: [
                         { name: 'beep', args: [{ name: 'frequency', default: 500 }, { name: 'duration', default: 100 }] },
+                        { name: 'play_notes', args: [{ name: 'notes' }, { name: 'tempo', default: 120 }] },
                         { name: 'say', args: [{ name: 'text' }] },
                         { name: 'set_volume', args: [{ name: 'volume' }, { name: 'which', default: "'_all_'" }] }
                     ],

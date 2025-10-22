@@ -29,10 +29,16 @@ class EV3Brick:
       while self.sound.isSpeaking():
         time.sleep(SENSOR_DELAY)
 
+    def play_notes(self, notes, tempo=120):
+      self.sound.set_volume(self.beep_volume)
+      self.sound.play_notes(notes, tempo, self.DEFAULT_DELAY)
+      while self.sound.isPlaying():
+        time.sleep(SENSOR_DELAY)
+
     def set_volume(self, volume, which='_all_'):
       if which == '_all_' or which == 'Beep':
         self.beep_volume = volume
-      
+
       if which == '_all_' or which == 'PCM':
         self.pcm_volume = volume
 
