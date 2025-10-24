@@ -32,6 +32,7 @@ var pybricks_generator = new function() {
       'from pybricks.tools import wait\n' +
       'from pybricks.robotics import DriveBase\n' +
       'from ev3dev2.sensor.virtual import *\n' +
+      '\n' +'import math\n' +
       '\n' +
       '# Create the sensors and motors objects\n' +
       'ev3 = EV3Brick()\n' +
